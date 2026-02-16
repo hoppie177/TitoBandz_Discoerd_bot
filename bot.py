@@ -87,3 +87,18 @@ async def on_ready():
 
 client.run(DISCORD_TOKEN)
 
+from aiohttp import web
+import asyncio
+
+async def handle(request):
+    return web.Response(text="Bot is alive!")
+
+app = web.Application()
+app.add_routes([web.get("/", handle)])
+
+runner = web.AppRunner(app)
+asyncio.get_event_loop().run_until_complete(runner.setup())
+site = web.TCPSite(runner, "0.0.0.0", 8000)
+asyncio.get_event_loop().run_until_complete(site.start())
+
+
