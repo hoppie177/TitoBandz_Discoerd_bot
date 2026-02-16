@@ -39,10 +39,12 @@ async def check_stream():
     global is_live, access_token
     if not access_token:
         access_token = await get_twitch_token()
+
     headers = {
         "Client-ID": TWITCH_CLIENT_ID,
         "Authorization": f"Bearer {access_token}"
     }
+
     async with aiohttp.ClientSession() as session:
         async with session.get(
             "https://api.twitch.tv/helix/streams",
@@ -50,14 +52,18 @@ async def check_stream():
             params={"user_login": TWITCH_USERNAME}
         ) as resp:
             data = await resp.json()
+
             if "data" in data and len(data["data"]) > 0:
                 stream = data["data"][0]
+
                 if not is_live:
                     is_live = True
                     channel = client.get_channel(DISCORD_CHANNEL_ID)
+
                     title = stream["title"]
                     game = stream["game_name"]
                     thumbnail = stream["thumbnail_url"].format(width=1280, height=720)
+
                     embed = Embed(
                         title=f"{TWITCH_USERNAME} is LIVE!",
                         url=f"https://twitch.tv/{TWITCH_USERNAME}",
@@ -67,6 +73,7 @@ async def check_stream():
                     embed.add_field(name="Playing", value=game, inline=True)
                     embed.add_field(name="Watch Now", value=f"[Click Here](https://twitch.tv/{TWITCH_USERNAME})", inline=False)
                     embed.set_image(url=thumbnail)
+
                     await channel.send(content="@everyone", embed=embed)
             else:
                 is_live = False
@@ -90,8 +97,10 @@ async def on_ready():
 async def start_http_server():
     async def handle(request):
         return web.Response(text="Bot is alive!")
+
     app = web.Application()
     app.add_routes([web.get("/", handle)])
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", 8000)
@@ -102,7 +111,7 @@ async def start_http_server():
 # MAIN ENTRYPOINT
 # -----------------------------
 async def main():
-    # Start HTTP server and Discord bot concurrently
+    # Run HTTP server and Discord bot concurrently
     await asyncio.gather(
         start_http_server(),
         client.start(DISCORD_TOKEN)
