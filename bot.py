@@ -17,13 +17,13 @@ TWITCH_USERNAME = "ItzHoppie"
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
-is_live = False
+session = None
 access_token = None
-session = None  # 🔥 global reusable session
+last_stream_id = None  # prevents duplicate announcements
 
 
 # -----------------------------
-# TWITCH FUNCTIONS
+# TWITCH AUTH
 # -----------------------------
 async def get_twitch_token():
     global access_token
@@ -39,8 +39,11 @@ async def get_twitch_token():
         access_token = data["access_token"]
 
 
+# -----------------------------
+# CHECK STREAM
+# -----------------------------
 async def check_stream():
-    global is_live, access_token
+    global access_token, last_stream_id
 
     if not access_token:
         await get_twitch_token()
@@ -56,19 +59,25 @@ async def check_stream():
         params={"user_login": TWITCH_USERNAME}
     ) as resp:
 
-        # If token expired, refresh automatically
+        # Refresh token if expired
         if resp.status == 401:
             await get_twitch_token()
             return
 
         data = await resp.json()
 
-        if "data" in data and len(data["data"]) > 0:
+        if data.get("data"):
             stream = data["data"][0]
+            stream_id = stream["id"]
 
-            if not is_live:
-                is_live = True
+            # Only announce NEW streams
+            if stream_id != last_stream_id:
+                last_stream_id = stream_id
+
                 channel = client.get_channel(DISCORD_CHANNEL_ID)
+                if channel is None:
+                    print("Channel not found.")
+                    return
 
                 title = stream["title"]
                 game = stream["game_name"]
@@ -80,6 +89,7 @@ async def check_stream():
                     description=title,
                     color=0x9146FF
                 )
+
                 embed.add_field(name="Playing", value=game, inline=True)
                 embed.add_field(
                     name="Watch Now",
@@ -88,9 +98,19 @@ async def check_stream():
                 )
                 embed.set_image(url=thumbnail)
 
-                await channel.send(content="@everyone", embed=embed)
+                try:
+                    # ⚠️ Removed @everyone to avoid 429 spam
+                    await channel.send(embed=embed)
+                    print("Live notification sent.")
+                except discord.HTTPException as e:
+                    if e.status == 429:
+                        print("Rate limited by Discord. Waiting...")
+                        await asyncio.sleep(5)
+                    else:
+                        raise
         else:
-            is_live = False
+            # Stream offline → reset stream ID
+            last_stream_id = None
 
 
 # -----------------------------
@@ -107,7 +127,7 @@ async def twitch_loop():
 
 
 # -----------------------------
-# HTTP SERVER FOR RENDER
+# HTTP SERVER (Render)
 # -----------------------------
 async def start_http_server():
     async def handle(request):
@@ -137,7 +157,7 @@ async def on_ready():
 # -----------------------------
 async def main():
     global session
-    session = aiohttp.ClientSession()  # 🔥 Create ONE session
+    session = aiohttp.ClientSession()
 
     try:
         await asyncio.gather(
@@ -145,7 +165,7 @@ async def main():
             client.start(DISCORD_TOKEN)
         )
     finally:
-        await session.close()  # 🔥 Properly close session on shutdown
+        await session.close()
 
 
 asyncio.run(main())
